@@ -9,7 +9,7 @@ app.use(express.json({ limit: '10mb' }));
 
 const PORT = process.env.PORT || 3000;
 const BASE_URL =
-  process.env.BASE_URL || 'https://animosity-countdown-harvest.ngrok-free.dev';
+  process.env.BASE_URL || 'https://autovectors-render.onrender.com';
 const OUTPUT_DIR = path.join(process.cwd(), 'public', 'renders');
 
 await fs.mkdir(OUTPUT_DIR, { recursive: true });
@@ -42,8 +42,6 @@ function buildSvgOverlay({ width, height, line1, line2, line3 = '' }) {
   const text2 = escapeXml(line2);
   const text3 = escapeXml(line3);
 
-  // pritaikyta pagal tavo dabartinį cover:
-  // tekstas centre pagal plotį, bet kiek aukščiau negu buvo
   const centerX = width / 2;
   const baseY = Math.round(height * 0.37);
 
@@ -82,6 +80,10 @@ function buildSvgOverlay({ width, height, line1, line2, line3 = '' }) {
   </svg>
   `;
 }
+
+app.get('/', (req, res) => {
+  res.send('AutoVectors Render API veikia');
+});
 
 app.use('/renders', express.static(path.join(process.cwd(), 'public', 'renders')));
 
