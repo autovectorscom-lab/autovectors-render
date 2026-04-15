@@ -45,19 +45,69 @@ function safeFileName(value = '') {
     .replace(/^-|-$/g, '');
 }
 
+function estimateTextWidth(text, fontSize, weightFactor = 0.6) {
+  return String(text || '').length * fontSize * weightFactor;
+}
+
+function fitFontSize({
+  text = '',
+  maxWidth = 600,
+  startSize = 56,
+  minSize = 24,
+  weightFactor = 0.6,
+}) {
+  let size = startSize;
+
+  while (size > minSize && estimateTextWidth(text, size, weightFactor) > maxWidth) {
+    size -= 1;
+  }
+
+  return size;
+}
+
 function buildSvgOverlay({ width, height, line1, line2, line3 = '' }) {
   const text1 = escapeXml(line1);
   const text2 = escapeXml(line2);
   const text3 = escapeXml(line3);
 
-  const centerX = Math.round(width * 0.46);
-  const baseY = Math.round(height * 0.38);
+  // Lentelės centras vizualiai yra truputį kairiau nei viso image centras
+  const centerX = Math.round(width * 0.455);
+  const baseY = Math.round(height * 0.395);
+
+  // Griežtos ribos title blokui
+  const titleMaxWidth = Math.round(width * 0.58);
+  const subMaxWidth = Math.round(width * 0.42);
+  const descMaxWidth = Math.round(width * 0.46);
+
+  const line1FontSize = fitFontSize({
+    text: line1,
+    maxWidth: titleMaxWidth,
+    startSize: 58,
+    minSize: 34,
+    weightFactor: 0.58,
+  });
+
+  const line2FontSize = fitFontSize({
+    text: line2,
+    maxWidth: subMaxWidth,
+    startSize: 37,
+    minSize: 24,
+    weightFactor: 0.56,
+  });
+
+  const line3FontSize = fitFontSize({
+    text: line3,
+    maxWidth: descMaxWidth,
+    startSize: 24,
+    minSize: 18,
+    weightFactor: 0.56,
+  });
 
   return `
   <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <filter id="glowStrong" x="-50%" y="-50%" width="200%" height="200%">
-        <feGaussianBlur stdDeviation="4.5" result="blur"/>
+        <feGaussianBlur stdDeviation="4.8" result="blur"/>
         <feMerge>
           <feMergeNode in="blur"/>
           <feMergeNode in="SourceGraphic"/>
@@ -78,39 +128,33 @@ function buildSvgOverlay({ width, height, line1, line2, line3 = '' }) {
       y="${baseY}"
       text-anchor="middle"
       font-family="Arial, Helvetica, sans-serif"
-      font-size="58"
+      font-size="${line1FontSize}"
       font-weight="800"
       fill="#ffffff"
       filter="url(#glowStrong)"
-      lengthAdjust="spacingAndGlyphs"
-      textLength="${Math.round(width * 0.50)}"
     >${text1}</text>
 
     <text
       x="${centerX}"
-      y="${baseY + 70}"
+      y="${baseY + 72}"
       text-anchor="middle"
       font-family="Arial, Helvetica, sans-serif"
-      font-size="37"
+      font-size="${line2FontSize}"
       font-weight="700"
-      fill="#aefcff"
+      fill="#affcff"
       filter="url(#glowSoft)"
-      lengthAdjust="spacingAndGlyphs"
-      textLength="${Math.round(width * 0.38)}"
     >${text2}</text>
 
     <text
       x="${centerX}"
-      y="${baseY + 132}"
+      y="${baseY + 136}"
       text-anchor="middle"
       font-family="Arial, Helvetica, sans-serif"
-      font-size="24"
+      font-size="${line3FontSize}"
       font-weight="700"
-      letter-spacing="1.2"
-      fill="#b9ffff"
+      letter-spacing="1.1"
+      fill="#bafcff"
       filter="url(#glowSoft)"
-      lengthAdjust="spacingAndGlyphs"
-      textLength="${Math.round(width * 0.44)}"
     >${text3}</text>
   </svg>
   `;
@@ -139,7 +183,7 @@ app.post('/render-product-image', async (req, res) => {
       line1 = '',
       line2 = '',
       line3 = '',
-      file_name = 'product-cover'
+      file_name = 'product-cover',
     } = req.body || {};
 
     const resolvedLogoUrl =
@@ -161,15 +205,15 @@ app.post('/render-product-image', async (req, res) => {
       height,
       line1,
       line2,
-      line3
+      line3,
     });
 
     const composites = [
       {
         input: Buffer.from(svg),
         top: 0,
-        left: 0
-      }
+        left: 0,
+      },
     ];
 
     if (resolvedLogoUrl) {
@@ -178,20 +222,26 @@ app.post('/render-product-image', async (req, res) => {
         'Failed to fetch brand logo'
       );
 
+      // Juodų kraštų šalinimas nuo logo canvas
+      const trimmedLogo = await sharp(logoBuffer)
+        .ensureAlpha()
+        .trim({
+          background: { r: 0, g: 0, b: 0, alpha: 1 },
+          threshold: 18,
+        })
+        .png()
+        .toBuffer();
+
       const logoTargetHeight = 60;
-      const logoMaxWidth = Math.round(width * 0.12);
+      const logoMaxWidth = Math.round(width * 0.13);
 
-      let logo = sharp(logoBuffer).ensureAlpha();
-
-      const trimmed = await logo.trim().png().toBuffer();
-
-      const resizedLogo = await sharp(trimmed)
+      const resizedLogo = await sharp(trimmedLogo)
         .ensureAlpha()
         .resize({
           width: logoMaxWidth,
           height: logoTargetHeight,
           fit: 'contain',
-          withoutEnlargement: true
+          withoutEnlargement: true,
         })
         .png()
         .toBuffer();
@@ -200,15 +250,15 @@ app.post('/render-product-image', async (req, res) => {
       const logoWidth = logoMeta.width || logoMaxWidth;
       const logoHeight = logoMeta.height || logoTargetHeight;
 
-      const baseY = Math.round(height * 0.38);
-      const logoCenterX = Math.round(width * 0.46);
+      const baseY = Math.round(height * 0.395);
+      const logoCenterX = Math.round(width * 0.455);
       const logoLeft = Math.round(logoCenterX - logoWidth / 2);
-      const logoTop = baseY + 150;
+      const logoTop = baseY + 160;
 
       composites.push({
         input: resizedLogo,
         top: logoTop,
-        left: logoLeft
+        left: logoLeft,
       });
     }
 
@@ -223,12 +273,12 @@ app.post('/render-product-image', async (req, res) => {
     return res.json({
       success: true,
       image_url: `${BASE_URL}/renders/${outputName}`,
-      file_name: outputName
+      file_name: outputName,
     });
   } catch (error) {
     return res.status(500).json({
       error: 'Render failed',
-      details: error.message
+      details: error.message,
     });
   }
 });
