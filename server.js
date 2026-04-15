@@ -55,36 +55,54 @@ function buildSvgOverlay({ width, height, line1, line2, line3 = '' }) {
 
   return `
   <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+
+    <defs>
+      <filter id="glow">
+        <feGaussianBlur stdDeviation="3.5" result="coloredBlur"/>
+        <feMerge>
+          <feMergeNode in="coloredBlur"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>
+
+    <!-- TITLE -->
     <text
       x="${centerX}"
       y="${baseY}"
       text-anchor="middle"
       font-family="Arial, Helvetica, sans-serif"
-      font-size="54"
-      font-weight="700"
+      font-size="56"
+      font-weight="800"
       fill="#ffffff"
+      filter="url(#glow)"
     >${text1}</text>
 
+    <!-- SUB -->
     <text
       x="${centerX}"
-      y="${baseY + 60}"
+      y="${baseY + 65}"
       text-anchor="middle"
       font-family="Arial, Helvetica, sans-serif"
-      font-size="34"
+      font-size="36"
       font-weight="700"
       fill="#9ffcff"
+      filter="url(#glow)"
     >${text2}</text>
 
+    <!-- DESC -->
     <text
       x="${centerX}"
-      y="${baseY + 110}"
+      y="${baseY + 120}"
       text-anchor="middle"
       font-family="Arial, Helvetica, sans-serif"
-      font-size="22"
+      font-size="24"
       font-weight="700"
       letter-spacing="1.5"
       fill="#9ffcff"
+      filter="url(#glow)"
     >${text3}</text>
+
   </svg>
   `;
 }
@@ -159,22 +177,21 @@ app.post('/render-product-image', async (req, res) => {
       const logoMaxHeight = titleFontSize;
       const logoMaxWidth = Math.round(width * 0.16);
 
-      const resizedLogo = await sharp(logoBuffer)
-        .resize({
-          width: logoMaxWidth,
-          height: logoMaxHeight,
-          fit: 'contain',
-          withoutEnlargement: true
-        })
-        .png()
-        .toBuffer();
+const resizedLogo = await sharp(logoBuffer)
+  .flatten({ background: { r: 0, g: 0, b: 0, alpha: 0 } }) // FIX black bg
+  .resize({
+    height: 50, // 🔥 mažesnis nei title (labai svarbu)
+    fit: 'contain'
+  })
+  .png()
+  .toBuffer();
 
       const logoMeta = await sharp(resizedLogo).metadata();
       const logoWidth = logoMeta.width || logoMaxWidth;
       const logoHeight = logoMeta.height || logoMaxHeight;
 
       const baseY = Math.round(height * 0.34);
-      const logoTop = baseY + 125;
+     const logoTop = baseY + 140;
       const logoLeft = Math.round((width - logoWidth) / 2);
 
       composites.push({
