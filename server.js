@@ -70,11 +70,9 @@ function buildSvgOverlay({ width, height, line1, line2, line3 = '' }) {
   const text2 = escapeXml(line2);
   const text3 = escapeXml(line3);
 
-  // Vizualus lentos centras
   const centerX = Math.round(width * 0.455);
   const baseY = Math.round(height * 0.395);
 
-  // Siauresnės title ribos, kad ilgi pavadinimai mažėtų anksčiau
   const titleMaxWidth = Math.round(width * 0.50);
   const subMaxWidth = Math.round(width * 0.38);
   const descMaxWidth = Math.round(width * 0.42);
@@ -168,36 +166,68 @@ async function fetchBuffer(url, errorMessage) {
   return Buffer.from(await response.arrayBuffer());
 }
 
-async function makeBlackTransparent(buffer) {
+async function removeBorderBlackToTransparent(buffer) {
   const image = sharp(buffer).ensureAlpha();
   const { data, info } = await image
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  // Paverčiam beveik juodus pikselius į transparent
-  // Kad neliktų juodų kvadratų aplink logo
-  for (let i = 0; i < data.length; i += info.channels) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    const a = data[i + 3];
+  const { width, height, channels } = info;
+  const visited = new Uint8Array(width * height);
+  const stack = [];
 
-    const isNearBlack = r < 20 && g < 20 && b < 20;
-    const isVisible = a > 0;
+  function isNearBlack(x, y) {
+    const idx = (y * width + x) * channels;
+    const r = data[idx];
+    const g = data[idx + 1];
+    const b = data[idx + 2];
+    const a = data[idx + 3];
 
-    if (isNearBlack && isVisible) {
-      data[i + 3] = 0;
+    return a > 0 && r < 28 && g < 28 && b < 28;
+  }
+
+  function pushIfValid(x, y) {
+    if (x < 0 || y < 0 || x >= width || y >= height) return;
+
+    const p = y * width + x;
+    if (visited[p]) return;
+    visited[p] = 1;
+
+    if (isNearBlack(x, y)) {
+      stack.push([x, y]);
     }
+  }
+
+  for (let x = 0; x < width; x++) {
+    pushIfValid(x, 0);
+    pushIfValid(x, height - 1);
+  }
+
+  for (let y = 0; y < height; y++) {
+    pushIfValid(0, y);
+    pushIfValid(width - 1, y);
+  }
+
+  while (stack.length) {
+    const [x, y] = stack.pop();
+    const idx = (y * width + x) * channels;
+
+    data[idx + 3] = 0;
+
+    pushIfValid(x + 1, y);
+    pushIfValid(x - 1, y);
+    pushIfValid(x, y + 1);
+    pushIfValid(x, y - 1);
   }
 
   return sharp(data, {
     raw: {
-      width: info.width,
-      height: info.height,
-      channels: info.channels,
+      width,
+      height,
+      channels,
     },
   })
-    .trim()
+    .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png()
     .toBuffer();
 }
@@ -256,7 +286,7 @@ app.post('/render-product-image', async (req, res) => {
         'Failed to fetch brand logo'
       );
 
-      const transparentLogo = await makeBlackTransparent(logoBuffer);
+      const transparentLogo = await removeBorderBlackToTransparent(logoBuffer);
 
       const logoTargetHeight = 60;
       const logoMaxWidth = Math.round(width * 0.13);
