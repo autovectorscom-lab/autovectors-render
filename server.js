@@ -45,7 +45,7 @@ function safeFileName(value = '') {
     .replace(/^-|-$/g, '');
 }
 
-function estimateTextWidth(text, fontSize, weightFactor = 0.6) {
+function estimateTextWidth(text, fontSize, weightFactor = 0.58) {
   return String(text || '').length * fontSize * weightFactor;
 }
 
@@ -54,7 +54,7 @@ function fitFontSize({
   maxWidth = 600,
   startSize = 56,
   minSize = 24,
-  weightFactor = 0.6,
+  weightFactor = 0.58,
 }) {
   let size = startSize;
 
@@ -70,21 +70,21 @@ function buildSvgOverlay({ width, height, line1, line2, line3 = '' }) {
   const text2 = escapeXml(line2);
   const text3 = escapeXml(line3);
 
-  // Lentelės centras vizualiai yra truputį kairiau nei viso image centras
+  // Vizualus lentos centras
   const centerX = Math.round(width * 0.455);
   const baseY = Math.round(height * 0.395);
 
-  // Griežtos ribos title blokui
-  const titleMaxWidth = Math.round(width * 0.58);
-  const subMaxWidth = Math.round(width * 0.42);
-  const descMaxWidth = Math.round(width * 0.46);
+  // Siauresnės title ribos, kad ilgi pavadinimai mažėtų anksčiau
+  const titleMaxWidth = Math.round(width * 0.50);
+  const subMaxWidth = Math.round(width * 0.38);
+  const descMaxWidth = Math.round(width * 0.42);
 
   const line1FontSize = fitFontSize({
     text: line1,
     maxWidth: titleMaxWidth,
     startSize: 58,
-    minSize: 34,
-    weightFactor: 0.58,
+    minSize: 30,
+    weightFactor: 0.57,
   });
 
   const line2FontSize = fitFontSize({
@@ -168,6 +168,40 @@ async function fetchBuffer(url, errorMessage) {
   return Buffer.from(await response.arrayBuffer());
 }
 
+async function makeBlackTransparent(buffer) {
+  const image = sharp(buffer).ensureAlpha();
+  const { data, info } = await image
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  // Paverčiam beveik juodus pikselius į transparent
+  // Kad neliktų juodų kvadratų aplink logo
+  for (let i = 0; i < data.length; i += info.channels) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const a = data[i + 3];
+
+    const isNearBlack = r < 20 && g < 20 && b < 20;
+    const isVisible = a > 0;
+
+    if (isNearBlack && isVisible) {
+      data[i + 3] = 0;
+    }
+  }
+
+  return sharp(data, {
+    raw: {
+      width: info.width,
+      height: info.height,
+      channels: info.channels,
+    },
+  })
+    .trim()
+    .png()
+    .toBuffer();
+}
+
 app.get('/', (req, res) => {
   res.send('AutoVectors Render API veikia');
 });
@@ -222,20 +256,12 @@ app.post('/render-product-image', async (req, res) => {
         'Failed to fetch brand logo'
       );
 
-      // Juodų kraštų šalinimas nuo logo canvas
-      const trimmedLogo = await sharp(logoBuffer)
-        .ensureAlpha()
-        .trim({
-          background: { r: 0, g: 0, b: 0, alpha: 1 },
-          threshold: 18,
-        })
-        .png()
-        .toBuffer();
+      const transparentLogo = await makeBlackTransparent(logoBuffer);
 
       const logoTargetHeight = 60;
       const logoMaxWidth = Math.round(width * 0.13);
 
-      const resizedLogo = await sharp(trimmedLogo)
+      const resizedLogo = await sharp(transparentLogo)
         .ensureAlpha()
         .resize({
           width: logoMaxWidth,
@@ -248,7 +274,6 @@ app.post('/render-product-image', async (req, res) => {
 
       const logoMeta = await sharp(resizedLogo).metadata();
       const logoWidth = logoMeta.width || logoMaxWidth;
-      const logoHeight = logoMeta.height || logoTargetHeight;
 
       const baseY = Math.round(height * 0.395);
       const logoCenterX = Math.round(width * 0.455);
