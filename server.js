@@ -10,6 +10,10 @@ app.use(express.json({ limit: '10mb' }));
 const PORT = process.env.PORT || 3000;
 const BASE_URL =
   process.env.BASE_URL || 'https://autovectors-render.onrender.com';
+
+const DEFAULT_BASE_IMAGE_URL =
+  'https://cdn.shopify.com/s/files/1/0884/4771/3613/files/autovectors_ppf_precut_templates_direct_download_request.png?v=1776289002';
+
 const OUTPUT_DIR = path.join(process.cwd(), 'public', 'renders');
 
 await fs.mkdir(OUTPUT_DIR, { recursive: true });
@@ -43,7 +47,7 @@ function buildSvgOverlay({ width, height, line1, line2, line3 = '' }) {
   const text3 = escapeXml(line3);
 
   const centerX = width / 2;
-  const baseY = Math.round(height * 0.37);
+  const baseY = Math.round(height * 0.34);
 
   return `
   <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
@@ -81,6 +85,14 @@ function buildSvgOverlay({ width, height, line1, line2, line3 = '' }) {
   `;
 }
 
+async function fetchBuffer(url, errorMessage) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(errorMessage);
+  }
+  return Buffer.from(await response.arrayBuffer());
+}
+
 app.get('/', (req, res) => {
   res.send('AutoVectors Render API veikia');
 });
@@ -90,7 +102,8 @@ app.use('/renders', express.static(path.join(process.cwd(), 'public', 'renders')
 app.post('/render-product-image', async (req, res) => {
   try {
     const {
-      base_image_url,
+      base_image_url = DEFAULT_BASE_IMAGE_URL,
+      brand_logo_url = '',
       line1 = '',
       line2 = '',
       line3 = '',
@@ -101,12 +114,11 @@ app.post('/render-product-image', async (req, res) => {
       return res.status(400).json({ error: 'base_image_url is required' });
     }
 
-    const imageResponse = await fetch(base_image_url);
-    if (!imageResponse.ok) {
-      return res.status(400).json({ error: 'Failed to fetch base image' });
-    }
+    const imageBuffer = await fetchBuffer(
+      base_image_url,
+      'Failed to fetch base image'
+    );
 
-    const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
     const image = sharp(imageBuffer);
     const metadata = await image.metadata();
 
@@ -121,17 +133,53 @@ app.post('/render-product-image', async (req, res) => {
       line3
     });
 
+    const composites = [
+      {
+        input: Buffer.from(svg),
+        top: 0,
+        left: 0
+      }
+    ];
+
+    if (brand_logo_url) {
+      const logoBuffer = await fetchBuffer(
+        brand_logo_url,
+        'Failed to fetch brand logo'
+      );
+
+      const logoMaxWidth = Math.round(width * 0.18);
+      const logoMaxHeight = Math.round(height * 0.08);
+
+      const resizedLogo = await sharp(logoBuffer)
+        .resize({
+          width: logoMaxWidth,
+          height: logoMaxHeight,
+          fit: 'contain',
+          withoutEnlargement: true
+        })
+        .png()
+        .toBuffer();
+
+      const logoMeta = await sharp(resizedLogo).metadata();
+      const logoWidth = logoMeta.width || logoMaxWidth;
+      const logoHeight = logoMeta.height || logoMaxHeight;
+
+      const baseY = Math.round(height * 0.34);
+      const logoTop = baseY + 135;
+      const logoLeft = Math.round((width - logoWidth) / 2);
+
+      composites.push({
+        input: resizedLogo,
+        top: logoTop,
+        left: logoLeft
+      });
+    }
+
     const outputName = `${safeFileName(file_name)}-${Date.now()}.png`;
     const outputPath = path.join(OUTPUT_DIR, outputName);
 
     await image
-      .composite([
-        {
-          input: Buffer.from(svg),
-          top: 0,
-          left: 0
-        }
-      ])
+      .composite(composites)
       .png()
       .toFile(outputPath);
 
