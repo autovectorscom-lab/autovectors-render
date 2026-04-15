@@ -50,59 +50,68 @@ function buildSvgOverlay({ width, height, line1, line2, line3 = '' }) {
   const text2 = escapeXml(line2);
   const text3 = escapeXml(line3);
 
-  const centerX = width / 2;
-  const baseY = Math.round(height * 0.34);
+  const centerX = Math.round(width * 0.46);
+  const baseY = Math.round(height * 0.38);
 
   return `
   <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-
     <defs>
-      <filter id="glow">
-        <feGaussianBlur stdDeviation="3.5" result="coloredBlur"/>
+      <filter id="glowStrong" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="4.5" result="blur"/>
         <feMerge>
-          <feMergeNode in="coloredBlur"/>
+          <feMergeNode in="blur"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+
+      <filter id="glowSoft" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="3.2" result="blur"/>
+        <feMerge>
+          <feMergeNode in="blur"/>
           <feMergeNode in="SourceGraphic"/>
         </feMerge>
       </filter>
     </defs>
 
-    <!-- TITLE -->
     <text
       x="${centerX}"
       y="${baseY}"
       text-anchor="middle"
       font-family="Arial, Helvetica, sans-serif"
-      font-size="56"
+      font-size="58"
       font-weight="800"
       fill="#ffffff"
-      filter="url(#glow)"
+      filter="url(#glowStrong)"
+      lengthAdjust="spacingAndGlyphs"
+      textLength="${Math.round(width * 0.50)}"
     >${text1}</text>
 
-    <!-- SUB -->
     <text
       x="${centerX}"
-      y="${baseY + 65}"
+      y="${baseY + 70}"
       text-anchor="middle"
       font-family="Arial, Helvetica, sans-serif"
-      font-size="36"
+      font-size="37"
       font-weight="700"
-      fill="#9ffcff"
-      filter="url(#glow)"
+      fill="#aefcff"
+      filter="url(#glowSoft)"
+      lengthAdjust="spacingAndGlyphs"
+      textLength="${Math.round(width * 0.38)}"
     >${text2}</text>
 
-    <!-- DESC -->
     <text
       x="${centerX}"
-      y="${baseY + 120}"
+      y="${baseY + 132}"
       text-anchor="middle"
       font-family="Arial, Helvetica, sans-serif"
       font-size="24"
       font-weight="700"
-      letter-spacing="1.5"
-      fill="#9ffcff"
-      filter="url(#glow)"
+      letter-spacing="1.2"
+      fill="#b9ffff"
+      filter="url(#glowSoft)"
+      lengthAdjust="spacingAndGlyphs"
+      textLength="${Math.round(width * 0.44)}"
     >${text3}</text>
-
   </svg>
   `;
 }
@@ -135,10 +144,6 @@ app.post('/render-product-image', async (req, res) => {
 
     const resolvedLogoUrl =
       brand_logo_url || BRAND_LOGOS[String(brand).toLowerCase()] || '';
-
-    if (!base_image_url) {
-      return res.status(400).json({ error: 'base_image_url is required' });
-    }
 
     const imageBuffer = await fetchBuffer(
       base_image_url,
@@ -173,26 +178,32 @@ app.post('/render-product-image', async (req, res) => {
         'Failed to fetch brand logo'
       );
 
-      const titleFontSize = 54;
-      const logoMaxHeight = titleFontSize;
-      const logoMaxWidth = Math.round(width * 0.16);
+      const logoTargetHeight = 60;
+      const logoMaxWidth = Math.round(width * 0.12);
 
-const resizedLogo = await sharp(logoBuffer)
-  .flatten({ background: { r: 0, g: 0, b: 0, alpha: 0 } }) // FIX black bg
-  .resize({
-    height: 50, // 🔥 mažesnis nei title (labai svarbu)
-    fit: 'contain'
-  })
-  .png()
-  .toBuffer();
+      let logo = sharp(logoBuffer).ensureAlpha();
+
+      const trimmed = await logo.trim().png().toBuffer();
+
+      const resizedLogo = await sharp(trimmed)
+        .ensureAlpha()
+        .resize({
+          width: logoMaxWidth,
+          height: logoTargetHeight,
+          fit: 'contain',
+          withoutEnlargement: true
+        })
+        .png()
+        .toBuffer();
 
       const logoMeta = await sharp(resizedLogo).metadata();
       const logoWidth = logoMeta.width || logoMaxWidth;
-      const logoHeight = logoMeta.height || logoMaxHeight;
+      const logoHeight = logoMeta.height || logoTargetHeight;
 
-      const baseY = Math.round(height * 0.34);
-     const logoTop = baseY + 140;
-      const logoLeft = Math.round((width - logoWidth) / 2);
+      const baseY = Math.round(height * 0.38);
+      const logoCenterX = Math.round(width * 0.46);
+      const logoLeft = Math.round(logoCenterX - logoWidth / 2);
+      const logoTop = baseY + 150;
 
       composites.push({
         input: resizedLogo,
