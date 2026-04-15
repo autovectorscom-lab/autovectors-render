@@ -14,6 +14,10 @@ const BASE_URL =
 const DEFAULT_BASE_IMAGE_URL =
   'https://cdn.shopify.com/s/files/1/0884/4771/3613/files/autovectors_ppf_precut_templates_direct_download_request.png?v=1776289002';
 
+const BRAND_LOGOS = {
+  bmw: 'https://cdn.shopify.com/s/files/1/0884/4771/3613/files/bmw_png.webp?v=1776289442',
+};
+
 const OUTPUT_DIR = path.join(process.cwd(), 'public', 'renders');
 
 await fs.mkdir(OUTPUT_DIR, { recursive: true });
@@ -103,12 +107,16 @@ app.post('/render-product-image', async (req, res) => {
   try {
     const {
       base_image_url = DEFAULT_BASE_IMAGE_URL,
+      brand = '',
       brand_logo_url = '',
       line1 = '',
       line2 = '',
       line3 = '',
       file_name = 'product-cover'
     } = req.body || {};
+
+    const resolvedLogoUrl =
+      brand_logo_url || BRAND_LOGOS[String(brand).toLowerCase()] || '';
 
     if (!base_image_url) {
       return res.status(400).json({ error: 'base_image_url is required' });
@@ -141,14 +149,15 @@ app.post('/render-product-image', async (req, res) => {
       }
     ];
 
-    if (brand_logo_url) {
+    if (resolvedLogoUrl) {
       const logoBuffer = await fetchBuffer(
-        brand_logo_url,
+        resolvedLogoUrl,
         'Failed to fetch brand logo'
       );
 
-      const logoMaxWidth = Math.round(width * 0.18);
-      const logoMaxHeight = Math.round(height * 0.08);
+      const titleFontSize = 54;
+      const logoMaxHeight = titleFontSize;
+      const logoMaxWidth = Math.round(width * 0.16);
 
       const resizedLogo = await sharp(logoBuffer)
         .resize({
@@ -165,7 +174,7 @@ app.post('/render-product-image', async (req, res) => {
       const logoHeight = logoMeta.height || logoMaxHeight;
 
       const baseY = Math.round(height * 0.34);
-      const logoTop = baseY + 135;
+      const logoTop = baseY + 125;
       const logoLeft = Math.round((width - logoWidth) / 2);
 
       composites.push({
