@@ -333,8 +333,8 @@ const finalLogo = await sharp({
   .png()
   .toBuffer();
 
-      const logoMeta = await sharp(resizedLogo).metadata();
-      const logoWidth = logoMeta.width || logoMaxWidth;
+const logoMeta = await sharp(finalLogo).metadata();
+const logoWidth = logoMeta.width || logoMaxWidth;
 
       const baseY = Math.round(height * 0.39);
       const logoCenterX = Math.round(width * 0.455);
