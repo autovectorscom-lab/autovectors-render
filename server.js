@@ -12,10 +12,10 @@ const BASE_URL =
   process.env.BASE_URL || 'https://autovectors-render.onrender.com';
 
 const DEFAULT_BASE_IMAGE_URL =
-  'https://cdn.shopify.com/s/files/1/0884/4771/3613/files/autovectors_ppf_precut_templates_direct_download_request.png?v=1776289002';
+  'https://cdn.shopify.com/s/files/1/0884/4771/3613/files/VECTORS_PPF_PRECUT_PATTERN_TEMPLATES_DOWNLOAD.png?v=1776328409';
 
 const BRAND_LOGOS = {
-  bmw: 'https://cdn.shopify.com/s/files/1/0884/4771/3613/files/bmw_png.webp?v=1776289442',
+  bmw: 'https://cdn.shopify.com/s/files/1/0884/4771/3613/files/bmw.png?v=1776328323',
 };
 
 const OUTPUT_DIR = path.join(process.cwd(), 'public', 'renders');
@@ -71,11 +71,11 @@ function buildSvgOverlay({ width, height, line1, line2, line3 = '' }) {
   const text3 = escapeXml(line3);
 
   const centerX = Math.round(width * 0.455);
-  const baseY = Math.round(height * 0.395);
+  const baseY = Math.round(height * 0.39);
 
-  const titleMaxWidth = Math.round(width * 0.50);
-  const subMaxWidth = Math.round(width * 0.38);
-  const descMaxWidth = Math.round(width * 0.42);
+  const titleMaxWidth = Math.round(width * 0.49);
+  const subMaxWidth = Math.round(width * 0.37);
+  const descMaxWidth = Math.round(width * 0.41);
 
   const line1FontSize = fitFontSize({
     text: line1,
@@ -166,72 +166,6 @@ async function fetchBuffer(url, errorMessage) {
   return Buffer.from(await response.arrayBuffer());
 }
 
-async function removeBorderBlackToTransparent(buffer) {
-  const image = sharp(buffer).ensureAlpha();
-  const { data, info } = await image
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-
-  const { width, height, channels } = info;
-  const visited = new Uint8Array(width * height);
-  const stack = [];
-
-  function isNearBlack(x, y) {
-    const idx = (y * width + x) * channels;
-    const r = data[idx];
-    const g = data[idx + 1];
-    const b = data[idx + 2];
-    const a = data[idx + 3];
-
-    return a > 0 && r < 28 && g < 28 && b < 28;
-  }
-
-  function pushIfValid(x, y) {
-    if (x < 0 || y < 0 || x >= width || y >= height) return;
-
-    const p = y * width + x;
-    if (visited[p]) return;
-    visited[p] = 1;
-
-    if (isNearBlack(x, y)) {
-      stack.push([x, y]);
-    }
-  }
-
-  for (let x = 0; x < width; x++) {
-    pushIfValid(x, 0);
-    pushIfValid(x, height - 1);
-  }
-
-  for (let y = 0; y < height; y++) {
-    pushIfValid(0, y);
-    pushIfValid(width - 1, y);
-  }
-
-  while (stack.length) {
-    const [x, y] = stack.pop();
-    const idx = (y * width + x) * channels;
-
-    data[idx + 3] = 0;
-
-    pushIfValid(x + 1, y);
-    pushIfValid(x - 1, y);
-    pushIfValid(x, y + 1);
-    pushIfValid(x, y - 1);
-  }
-
-  return sharp(data, {
-    raw: {
-      width,
-      height,
-      channels,
-    },
-  })
-    .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .png()
-    .toBuffer();
-}
-
 app.get('/', (req, res) => {
   res.send('AutoVectors Render API veikia');
 });
@@ -286,13 +220,12 @@ app.post('/render-product-image', async (req, res) => {
         'Failed to fetch brand logo'
       );
 
-      const transparentLogo = await removeBorderBlackToTransparent(logoBuffer);
-
       const logoTargetHeight = 60;
       const logoMaxWidth = Math.round(width * 0.13);
 
-      const resizedLogo = await sharp(transparentLogo)
+      const resizedLogo = await sharp(logoBuffer)
         .ensureAlpha()
+        .trim()
         .resize({
           width: logoMaxWidth,
           height: logoTargetHeight,
@@ -305,10 +238,10 @@ app.post('/render-product-image', async (req, res) => {
       const logoMeta = await sharp(resizedLogo).metadata();
       const logoWidth = logoMeta.width || logoMaxWidth;
 
-      const baseY = Math.round(height * 0.395);
+      const baseY = Math.round(height * 0.39);
       const logoCenterX = Math.round(width * 0.455);
       const logoLeft = Math.round(logoCenterX - logoWidth / 2);
-      const logoTop = baseY + 160;
+      const logoTop = baseY + 158;
 
       composites.push({
         input: resizedLogo,
