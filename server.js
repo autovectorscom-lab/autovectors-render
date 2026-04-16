@@ -273,7 +273,7 @@ app.post('/render-product-image', async (req, res) => {
       const logoTargetHeight = 60;
       const logoMaxWidth = Math.round(width * 0.13);
 
-      const baseLogo = await sharp(croppedLogo)
+    const baseLogo = await sharp(croppedLogo)
   .ensureAlpha()
   .resize({
     width: logoMaxWidth,
@@ -285,23 +285,20 @@ app.post('/render-product-image', async (req, res) => {
   .png()
   .toBuffer();
 
-// 🔵 glow layer
 const glow = await sharp(baseLogo)
-  .blur(6) // glow intensity
+  .blur(6)
   .modulate({
     brightness: 1.2,
   })
   .png()
   .toBuffer();
 
-// ⚫ shadow layer
 const shadow = await sharp(baseLogo)
   .blur(4)
   .tint({ r: 0, g: 0, b: 0 })
   .png()
   .toBuffer();
 
-// 📦 sujungiam viską
 const finalLogo = await sharp({
   create: {
     width: logoMaxWidth,
@@ -321,7 +318,7 @@ const finalLogo = await sharp({
       input: glow,
       top: 0,
       left: 0,
-      blend: 'screen', // glow efektas
+      blend: 'screen',
     },
     {
       input: baseLogo,
