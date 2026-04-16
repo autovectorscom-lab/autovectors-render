@@ -273,17 +273,65 @@ app.post('/render-product-image', async (req, res) => {
       const logoTargetHeight = 60;
       const logoMaxWidth = Math.round(width * 0.13);
 
-      const resizedLogo = await sharp(croppedLogo)
-        .ensureAlpha()
-        .resize({
-          width: logoMaxWidth,
-          height: logoTargetHeight,
-          fit: 'contain',
-          background: { r: 0, g: 0, b: 0, alpha: 0 },
-          withoutEnlargement: true,
-        })
-        .png()
-        .toBuffer();
+      const baseLogo = await sharp(croppedLogo)
+  .ensureAlpha()
+  .resize({
+    width: logoMaxWidth,
+    height: logoTargetHeight,
+    fit: 'contain',
+    background: { r: 0, g: 0, b: 0, alpha: 0 },
+    withoutEnlargement: true,
+  })
+  .png()
+  .toBuffer();
+
+// 🔵 glow layer
+const glow = await sharp(baseLogo)
+  .blur(6) // glow intensity
+  .modulate({
+    brightness: 1.2,
+  })
+  .png()
+  .toBuffer();
+
+// ⚫ shadow layer
+const shadow = await sharp(baseLogo)
+  .blur(4)
+  .tint({ r: 0, g: 0, b: 0 })
+  .png()
+  .toBuffer();
+
+// 📦 sujungiam viską
+const finalLogo = await sharp({
+  create: {
+    width: logoMaxWidth,
+    height: logoTargetHeight,
+    channels: 4,
+    background: { r: 0, g: 0, b: 0, alpha: 0 },
+  },
+})
+  .composite([
+    {
+      input: shadow,
+      top: 3,
+      left: 3,
+      blend: 'over',
+    },
+    {
+      input: glow,
+      top: 0,
+      left: 0,
+      blend: 'screen', // glow efektas
+    },
+    {
+      input: baseLogo,
+      top: 0,
+      left: 0,
+      blend: 'over',
+    },
+  ])
+  .png()
+  .toBuffer();
 
       const logoMeta = await sharp(resizedLogo).metadata();
       const logoWidth = logoMeta.width || logoMaxWidth;
@@ -294,7 +342,7 @@ app.post('/render-product-image', async (req, res) => {
       const logoTop = baseY + 158;
 
       composites.push({
-        input: resizedLogo,
+        input: finalLogo,
         top: logoTop,
         left: logoLeft,
       });
