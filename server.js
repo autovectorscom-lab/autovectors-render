@@ -166,6 +166,54 @@ async function fetchBuffer(url, errorMessage) {
   return Buffer.from(await response.arrayBuffer());
 }
 
+async function cropByAlpha(buffer) {
+  const img = sharp(buffer).ensureAlpha();
+  const { data, info } = await img
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const { width, height, channels } = info;
+
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = (y * width + x) * channels;
+      const alpha = data[idx + 3];
+
+      if (alpha > 0) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  if (maxX === -1 || maxY === -1) {
+    return sharp(buffer).ensureAlpha().png().toBuffer();
+  }
+
+  const extractLeft = minX;
+  const extractTop = minY;
+  const extractWidth = maxX - minX + 1;
+  const extractHeight = maxY - minY + 1;
+
+  return sharp(buffer)
+    .ensureAlpha()
+    .extract({
+      left: extractLeft,
+      top: extractTop,
+      width: extractWidth,
+      height: extractHeight,
+    })
+    .png()
+    .toBuffer();
+}
+
 app.get('/', (req, res) => {
   res.send('AutoVectors Render API veikia');
 });
@@ -220,19 +268,22 @@ app.post('/render-product-image', async (req, res) => {
         'Failed to fetch brand logo'
       );
 
+      const croppedLogo = await cropByAlpha(logoBuffer);
+
       const logoTargetHeight = 60;
       const logoMaxWidth = Math.round(width * 0.13);
 
-const resizedLogo = await sharp(logoBuffer)
-  .ensureAlpha()
-  .resize({
-    width: logoMaxWidth,
-    height: logoTargetHeight,
-    fit: 'contain',
-    background: { r: 0, g: 0, b: 0, alpha: 0 } // svarbu!
-  })
-  .png()
-  .toBuffer();
+      const resizedLogo = await sharp(croppedLogo)
+        .ensureAlpha()
+        .resize({
+          width: logoMaxWidth,
+          height: logoTargetHeight,
+          fit: 'contain',
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+          withoutEnlargement: true,
+        })
+        .png()
+        .toBuffer();
 
       const logoMeta = await sharp(resizedLogo).metadata();
       const logoWidth = logoMeta.width || logoMaxWidth;
