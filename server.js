@@ -223,17 +223,16 @@ app.post('/render-product-image', async (req, res) => {
       const logoTargetHeight = 60;
       const logoMaxWidth = Math.round(width * 0.13);
 
-      const resizedLogo = await sharp(logoBuffer)
-        .ensureAlpha()
-        .trim()
-        .resize({
-          width: logoMaxWidth,
-          height: logoTargetHeight,
-          fit: 'contain',
-          withoutEnlargement: true,
-        })
-        .png()
-        .toBuffer();
+const resizedLogo = await sharp(logoBuffer)
+  .ensureAlpha()
+  .resize({
+    width: logoMaxWidth,
+    height: logoTargetHeight,
+    fit: 'contain',
+    background: { r: 0, g: 0, b: 0, alpha: 0 } // svarbu!
+  })
+  .png()
+  .toBuffer();
 
       const logoMeta = await sharp(resizedLogo).metadata();
       const logoWidth = logoMeta.width || logoMaxWidth;
