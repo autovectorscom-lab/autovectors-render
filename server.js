@@ -197,21 +197,104 @@ async function cropByAlpha(buffer) {
     return sharp(buffer).ensureAlpha().png().toBuffer();
   }
 
-  const extractLeft = minX;
-  const extractTop = minY;
-  const extractWidth = maxX - minX + 1;
-  const extractHeight = maxY - minY + 1;
-
   return sharp(buffer)
     .ensureAlpha()
     .extract({
-      left: extractLeft,
-      top: extractTop,
-      width: extractWidth,
-      height: extractHeight,
+      left: minX,
+      top: minY,
+      width: maxX - minX + 1,
+      height: maxY - minY + 1,
     })
     .png()
     .toBuffer();
+}
+
+async function buildLogoWithEffects(logoBuffer, logoMaxWidth, logoTargetHeight) {
+  const croppedLogo = await cropByAlpha(logoBuffer);
+
+  const baseLogo = await sharp(croppedLogo)
+    .ensureAlpha()
+    .resize({
+      width: logoMaxWidth,
+      height: logoTargetHeight,
+      fit: 'contain',
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+      withoutEnlargement: true,
+    })
+    .png()
+    .toBuffer();
+
+  const baseMeta = await sharp(baseLogo).metadata();
+  const baseWidth = baseMeta.width || logoMaxWidth;
+  const baseHeight = baseMeta.height || logoTargetHeight;
+
+  const padding = 18;
+  const canvasWidth = baseWidth + padding * 2;
+  const canvasHeight = baseHeight + padding * 2;
+
+  const baseLeft = Math.round((canvasWidth - baseWidth) / 2);
+  const baseTop = Math.round((canvasHeight - baseHeight) / 2);
+
+  const glowStrong = await sharp(baseLogo)
+    .tint({ r: 140, g: 245, b: 255 })
+    .blur(10)
+    .modulate({ brightness: 1.35 })
+    .png()
+    .toBuffer();
+
+  const glowSoft = await sharp(baseLogo)
+    .tint({ r: 200, g: 255, b: 255 })
+    .blur(4)
+    .modulate({ brightness: 1.15 })
+    .png()
+    .toBuffer();
+
+  const shadow = await sharp(baseLogo)
+    .ensureAlpha()
+    .blur(5)
+    .tint({ r: 0, g: 0, b: 0 })
+    .modulate({ brightness: 0.55 })
+    .png()
+    .toBuffer();
+
+  const finalLogo = await sharp({
+    create: {
+      width: canvasWidth,
+      height: canvasHeight,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  })
+    .composite([
+      {
+        input: shadow,
+        top: baseTop + 4,
+        left: baseLeft + 4,
+        blend: 'over',
+      },
+      {
+        input: glowStrong,
+        top: baseTop,
+        left: baseLeft,
+        blend: 'screen',
+      },
+      {
+        input: glowSoft,
+        top: baseTop,
+        left: baseLeft,
+        blend: 'screen',
+      },
+      {
+        input: baseLogo,
+        top: baseTop,
+        left: baseLeft,
+        blend: 'over',
+      },
+    ])
+    .png()
+    .toBuffer();
+
+  return finalLogo;
 }
 
 app.get('/', (req, res) => {
@@ -268,75 +351,23 @@ app.post('/render-product-image', async (req, res) => {
         'Failed to fetch brand logo'
       );
 
-      const croppedLogo = await cropByAlpha(logoBuffer);
-
       const logoTargetHeight = 60;
       const logoMaxWidth = Math.round(width * 0.13);
 
-    const baseLogo = await sharp(croppedLogo)
-  .ensureAlpha()
-  .resize({
-    width: logoMaxWidth,
-    height: logoTargetHeight,
-    fit: 'contain',
-    background: { r: 0, g: 0, b: 0, alpha: 0 },
-    withoutEnlargement: true,
-  })
-  .png()
-  .toBuffer();
+      const finalLogo = await buildLogoWithEffects(
+        logoBuffer,
+        logoMaxWidth,
+        logoTargetHeight
+      );
 
-const glow = await sharp(baseLogo)
-  .blur(6)
-  .modulate({
-    brightness: 1.2,
-  })
-  .png()
-  .toBuffer();
-
-const shadow = await sharp(baseLogo)
-  .blur(4)
-  .tint({ r: 0, g: 0, b: 0 })
-  .png()
-  .toBuffer();
-
-const finalLogo = await sharp({
-  create: {
-    width: logoMaxWidth,
-    height: logoTargetHeight,
-    channels: 4,
-    background: { r: 0, g: 0, b: 0, alpha: 0 },
-  },
-})
-  .composite([
-    {
-      input: shadow,
-      top: 3,
-      left: 3,
-      blend: 'over',
-    },
-    {
-      input: glow,
-      top: 0,
-      left: 0,
-      blend: 'screen',
-    },
-    {
-      input: baseLogo,
-      top: 0,
-      left: 0,
-      blend: 'over',
-    },
-  ])
-  .png()
-  .toBuffer();
-
-const logoMeta = await sharp(finalLogo).metadata();
-const logoWidth = logoMeta.width || logoMaxWidth;
+      const logoMeta = await sharp(finalLogo).metadata();
+      const logoWidth = logoMeta.width || logoMaxWidth;
+      const logoHeight = logoMeta.height || logoTargetHeight;
 
       const baseY = Math.round(height * 0.39);
       const logoCenterX = Math.round(width * 0.455);
       const logoLeft = Math.round(logoCenterX - logoWidth / 2);
-      const logoTop = baseY + 158;
+      const logoTop = baseY + 146;
 
       composites.push({
         input: finalLogo,
